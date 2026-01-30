@@ -1,13 +1,10 @@
 # Longitudinal multimorbidity trajectories shape personalized glycemic patterns
-This repository contains the R source code for a comprehensive bioinformatics study investigating the associations between aging-related multimorbidity trajectories and personalized glycemic patterns. The analysis utilizes Continuous Glucose Monitoring (CGM) derivied metrics, clinical phenotypes, personalized glycemic sensitivity index (PGS), and serum proteomics.
+This repository contains the R source code for a comprehensive bioinformatics study investigating the associations between aging-related multimorbidity trajectories and personalized glycemic patterns. The analysis utilizes Continuous Glucose Monitoring (CGM) derivied metrics, clinical phenotypes, personalized glycemic sensitivity index (PGS), and serum proteomics. The description of main analysis pipeline is as shown below.
 
-## Project Structure
-The analysis is organized into 6 major parts:
 
 ## Part 0: Aging-related multimorbidity trajectories linked to divergent glycemic patterns. 
-__Correlation Analysis__: Spearman correlations between age and various CGM traits (daily means, nighttime/daytime metrics, and meal-based responses).
-Slicing Window Analysis: Calculates the Coefficient of Variation (CV) of glycemic traits across age groups using a sliding window approach to evaluate metabolic stability during aging.
-Uniqueness Analysis: Euclidean distance-based "uniqueness" scores to quantify how individual metabolic profiles deviate from the population average and how this relates to aging and disease trajectories.
+__·Correlation Analysis:__ Partial Spearman correlations between uniqueness of multimorbidity and uniqueness indices of various CGM traits (daily means, nighttime/daytime metrics, and meal-based responses). Euclidean distance-based "uniqueness" scores to quantify how individual metabolic profiles deviate from the population average and how this relates to aging and disease trajectories.
+__·Slicing Window Analysis:__ Calculates the Coefficient of Variation (CV) of glycemic traits across age groups using a sliding window approach to evaluate glycemic stability during aging. 
 
 ## Part 1: Disease duration of morbidities and CGM-derivied daily glycemic traits.
 Linear Modeling: Associating disease onset and duration with daily glycemic traits (e.g., eA1C, MAGE, CV).
