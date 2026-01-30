@@ -12,7 +12,7 @@ This repository contains the R source code for a comprehensive bioinformatics st
 ## Part 1: Disease duration of morbidities and CGM-derivied daily glycemic traits.
 __1) Linear modeling:__ Associations of disease durations with daily glycemic traits (e.g., eA1C, MAGE, CV).
 
-__2) Disease network:__ Construction of a disease association network using logistic regression to identify co-occurrence patterns of glucose-related diseases.
+__2) Disease network:__ This script implements Bayesian Network (BN) structure learning and causal inference to map the complex interdependencies among various diseases. It utilizes bootstrapping and tabu search to construct a consensus Directed Acyclic Graph (DAG), subsequently quantifying causal relationships through probability estimation.
 
 __3) Interaction analysis:__ Investigating the difference in longitudinal trajectories of multimorbidity stratified by baseline dyslipidemia status.
 
