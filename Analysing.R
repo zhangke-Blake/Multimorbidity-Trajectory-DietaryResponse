@@ -658,169 +658,415 @@ openxlsx::write.xlsx(list("stat_all"=out_linear.all, "stat_noT2D"=out_linear.noT
 
 
 
-#' @:Disease-network [Associations of each disease pair, all]
-#' @:Logistic-reg [cross-sectional]
+
+#' @:Disease-Network [DAG, directed acyclic graphs; Causal Bayesian Network] 
+#' @:All
+library(bnlearn)
+library(Rgraphviz)
+library(ggraph)
+library(igraph)
 ##------------------------------------------------------
-# data ---------------------------
+# data -----------------
+setwd(paste0(workpath, "/part6_MMI_sensi"))
+data_pheno <- openxlsx::read.xlsx("sensi_MMI_DailyTraits_linear_quartile.xlsx", sheet = "data")
+
 setwd(paste0(workpath, "/part1_disease"))
-data <- openxlsx::read.xlsx("stat_Daily_LADE_linear.xlsx", sheet = "data")
-list_id <- unique(data$id)
-stat <- openxlsx::read.xlsx("stat_Daily_LADE_linear.xlsx", sheet = "stat_all")
-list_disease <- unique(stat$exposure[stat$sig_q=="**" & !is.na(stat$sig_q)])
+disease_data <- openxlsx::read.xlsx("stat_DiseaeseNetwork_logistic_all.xlsx", sheet = "data")
+disease_data <- merge(disease_data, data_pheno[,c("id","income3","education3","smoke_whe","MET","score_chei")], by="id", all = F)
+head(disease_data)
+
+list_disease <- colnames(disease_data)[grep("^otc_", colnames(disease_data))]
+disease_data[,list_disease] = lapply(disease_data[,list_disease], as.factor)
+list_disease_with_covariates = c(list_disease, "age", "sex")
 
 
-setwd(paste(root,"/1_data", sep = ""))
-data_disease <- openxlsx::read.xlsx("GNHS_disease_all.xlsx", sheet = "disease")   
-data_disease <- data_disease[data_disease$id %in% list_id, c("sampleid","id","time","age","sex","BMI",list_disease)]
-sum(is.na(data_disease))
+# stat (BNs) ------------------
+#' @:结构学习 [Structure Learning] 
+start_disease = "otc_Dyslipidemia"
+phenotypes = setdiff(list_disease, start_disease)
+whitelist = data.frame(
+  from = rep(start_disease, length(phenotypes)),
+  to = phenotypes
+) 
+
+outcome_disease = "otc_CKD"
+phenotypes = setdiff(list_disease, outcome_disease)
+blacklist = data.frame(
+  from = c(rep(outcome_disease, length(phenotypes)), phenotypes),
+  to = c(phenotypes, rep(start_disease, length(phenotypes)))
+) 
 
 
-#' @:onset_age
-data_onsetAge <- data.frame(id = list_id)
-for(d in list_disease){
-  submatr <- data_disease[,c("id","time","age",d)]
-  submatr <- submatr[order(submatr$time, decreasing = F),]
-  submatr <- submatr[order(submatr$id, decreasing = F),]
-  
-  submatr2 <- data.frame()
-  for(id in list_id){ 
-    onset_Age <- ifelse(sum(submatr[submatr$id==id,d])==0, NA, min(submatr[submatr$id==id & submatr[,d]==1,"age"]))
-    onset_Age <- data.frame(id=id, age=onset_Age)
-    submatr2 <- rbind(submatr2, onset_Age)
-  }
-  names(submatr2)[2] <- d
-  data_onsetAge <- merge(data_onsetAge, submatr2, by='id', all=F)
+
+#' @:运行自助法+禁忌搜索 [Bootstrapping + Tabu Search]
+print("--- 正在运行结构学习... ---")
+set.seed(666666)
+list_R <- seq(100,1000,50)
+
+result_arc_strength <- data.frame()
+for(R in list_R){
+  stat <- boot.strength(data = disease_data[, list_disease], R = R, algorithm = "tabu", algorithm.args = list(blacklist = blacklist, whitelist = whitelist))
+  result <- data.frame(R=R, mean_strength=mean(stat$strength), median_strength=median(stat$strength),
+                       mean_strength_sub=mean(stat$strength[stat$strength!=0]), median_strength_sub=median(stat$strength[stat$strength!=0]))
+  result_arc_strength <- rbind.fill(result_arc_strength, result)
 }
-meanAge_onset <- data.frame(meanAge=apply(data_onsetAge[,-1],2,mean, na.rm=T))
-meanAge_onset <- data.frame(disease=rownames(meanAge_onset),meanAge_onset)
 
-data_disease.sub <- data_disease[data_disease$id %in% list_id,]
-data_disease.sub <- data_disease.sub[order(data_disease.sub$time, decreasing = T),]
-data_disease.sub <- data_disease.sub[!duplicated(data_disease.sub$id),]; table(data_disease.sub$time)
+R_best <- result_arc_strength$R[which.max(result_arc_strength$mean_strength_sub)]
+arc_strength <- boot.strength(data = disease_data[, list_disease], R = R_best, algorithm = "tabu", algorithm.args = list(blacklist = blacklist, whitelist = whitelist))
 
 
-# stat ------------------------
-input_data <- data_disease.sub 
+#' @:DAG-构建共识DAG [Consensus DAG & Evaluations]  
+consensus_dag = averaged.network(arc_strength, threshold = 0.2) 
+graphviz.plot(consensus_dag, layout = "dot", shape = "ellipse", main = "BN-based disease network" )
+
+
+#' @:参数学习 [Parameter Learning] 
+consensus_dag = cextend(consensus_dag)
+fitted_network = bn.fit(consensus_dag, data = disease_data[, list_disease], method = "bayes") 
+                        
+                        
+#' @:因果推断 [Causal inference]
+set.seed(666666)
+all_arcs = arcs(consensus_dag)
+results_list = list()
+
+if (nrow(all_arcs) > 0) {
+  for (i in 1:nrow(all_arcs)) {
+    from_node = all_arcs[i, "from"]
+    to_node = all_arcs[i, "to"]
+    cat(paste("正在计算: ", from_node, "->", to_node, "...\n"))
+     
+    event_str = paste0("(", to_node, " == '1')")
+    evidence_str1 = paste0("(", from_node, " == '1')")
+    evidence_str0 = paste0("(", from_node, " == '0')")
+     
+    event_expr = parse(text = event_str)[[1]]
+    evidence_expr1 = parse(text = evidence_str1)[[1]]
+    evidence_expr0 = parse(text = evidence_str0)[[1]]
+    
+    prob_p1 = cpquery( fitted_network, event = eval(event_expr), evidence = eval(evidence_expr1), n = 9999 )
+    prob_p0 = cpquery( fitted_network, event = eval(event_expr), evidence = eval(evidence_expr0), n = 9999 )
+     
+    prob_p1 = min(max(prob_p1, 1e-6), 1 - 1e-6)
+    prob_p0 = min(max(prob_p0, 1e-6), 1 - 1e-6)
+     
+    odds1 = prob_p1 / (1 - prob_p1)
+    odds0 = prob_p0 / (1 - prob_p0)
+    OR = odds1 / odds0
+     
+    # 使用Wald检验计算OR的95%置信区间
+    log_OR = log(OR)
+    SE_log_OR = sqrt((1/(prob_p1 * (1 - prob_p1) * 9999)) + (1/(prob_p0 * (1 - prob_p0) * 9999)))
+     
+    OR_lower = exp(log_OR - 1.96 * SE_log_OR)
+    OR_upper = exp(log_OR + 1.96 * SE_log_OR)
+     
+    z_score = log_OR / SE_log_OR
+    p_value = 2 * pnorm(-abs(z_score)) 
+    is_significant = ifelse(p_value < 0.05, "*", NA)
+    
+    # ================= 存储完整结果 =================
+    results_list[[i]] = data.frame(
+      Cause_From = from_node,
+      Effect_To = to_node,
+      OR = OR,
+      OR_lower_95 = OR_lower,
+      OR_upper_95 = OR_upper,
+      pval = p_value,
+      sig_p = is_significant,
+      P_Effect_given_Cause = prob_p1,
+      P_Effect_given_NO_Cause = prob_p0
+    )
+  }
+  
+  or_results = do.call(rbind, results_list)
+  print("--- 因果推断完成 ---") 
+  
+  sorted_results = or_results[order(-or_results$OR), ]  
+  
+} else {
+  print("您的 '共识DAG' 中没有 '弧' (可能是阈值 'threshold' 太高)，跳过OR计算。")
+}
+
+output <- data.frame(sorted_results)
+output$qval <- p.adjust(output$pval, method = "BH")
+output$sig_q <- ifelse(output$pval<0.05 & output$qval<0.05,"**",NA)
+
+
+
+# stat (logistic) ----------------
+list_covar <- c("age", "sex","BMI","income3","education3","smoke_whe","MET","score_chei")
 output_logist <- data.frame()
 
-for(d1 in list_disease){
-  list_disease2 <- setdiff(list_disease, d1)
-  
-  output <- data.frame()
-  for(d2 in list_disease2){
-    age1 <- meanAge_onset$meanAge[meanAge_onset$disease==d1]
-    age2 <- meanAge_onset$meanAge[meanAge_onset$disease==d2]
-    
-    exp <- ifelse(age1<age2, d1, d2)
-    otc <- setdiff(c(d1,d2), exp) 
-    stat <- glm(input_data[,otc] ~ input_data[,exp] + age + sex, data = input_data, family = "binomial")
-    result <- data.frame(t(summary(stat)$coefficient[2,]))
-    names(result) <- c("beta","se","z","pval")
-    
-    or <- exp(coef(stat))[2]
-    ci <- exp(confint(stat))[2,] 
-    
-    result <- data.frame(exposure=exp, outcome=otc, result, OR=or, CI_lower=ci[1], CI_upper=ci[2]) 
-    output <- rbind.fill(output, result)
+for(i in 1:nrow(all_arcs)){
+  exp <- all_arcs[i,1]
+  otc <- all_arcs[i,2] 
+  if(exp=="otc_ObesOverwe"|otc=="otc_ObesOverwe"){
+    covars <- setdiff(list_covar,"BMI")
+  }else{
+    covars <- list_covar
   }
-  output_logist <- rbind.fill(output_logist, output)
+  
+  a <- paste(otc, "~", exp)
+  b <- paste(covars, collapse = " + ")
+  stat <- glm(as.formula(paste(a,"+",b)), data = disease_data, family = "binomial")
+  result <- data.frame(t(summary(stat)$coefficient[2,]))
+  names(result) <- c("beta","se","z","pval")
+  result$sig_p <- ifelse(result$pval<0.05,"*",NA)
+  
+  or <- exp(coef(stat))[2]
+  ci <- exp(confint(stat))[2,] 
+  
+  result <- data.frame(exposure=exp, outcome=otc, result, OR=or, CI_lower=ci[1], CI_upper=ci[2]) 
+  output_logist <- rbind.fill(output_logist, result)
 }
-output_logist$tag <- paste(output_logist$exposure, output_logist$outcome, sep = "_")
-output_logist <- output_logist[!duplicated(output_logist$tag),]
-
 output_logist$qval <- p.adjust(output_logist$pval, method = "BH")
-output_logist$sig_q <- ifelse(output_logist$pval<0.05,"*",NA)
-output_logist$sig_q[output_logist$qval<0.05 & output_logist$pval<0.05] <- "**"
-table(output_logist$sig_q) 
+output_logist$sig_q <- ifelse(output_logist$qval<0.05,"**",NA)
+
+
+# Global_transitivity ------------------
+data <- output
+names(data)[1:2] <- c("exposure","outcome")
+head(data)
+
+#' @:nodes-file                             
+num_nodes1 <- data.frame(table(data$exposure[data$pval<0.05 & data$qval<0.05]))
+num_nodes2 <- data.frame(table(data$outcome[data$pval<0.05 & data$qval<0.05]))
+num_nodes <- rbind(num_nodes1, num_nodes2)
+input <- data[data$pval<0.05 & data$qval<0.05,]
+
+nodes <- data.frame(unique(c(unique(input$exposure), unique(input$outcome))))
+names(nodes) <- "node"  
+nodes <- merge(nodes, num_nodes, by.x = "node", by.y = "Var1", all.x=T)
+nodes <- aggregate(nodes$Freq, by=list(nodes$node), sum)
+names(nodes) <- c("node","Freq")
+
+nodes$seq <- seq(0,nrow(nodes)-1) 
+nodes$angle <- 90 - 360 * (nodes$seq+0.5) / nrow(nodes)
+nodes$angle <- ifelse(nodes$angle < (-90), nodes$angle+180, nodes$angle)
+nodes$hjust <- ifelse(nodes$seq < round(nrow(nodes)/2), 0, 1) 
+
+
+#' @:edges
+edges <- data.frame(from=input$exposure, to=input$outcome, corr=input$OR, qval=input$qval)
+edges$class <- ifelse(edges$corr>1, "Positive correlation", "Negative correlation")
+edges$class[edges$qval>0.05] <- "Insignificant"
+
+#' @:merge
+g <- tidygraph::tbl_graph(nodes=nodes, edges=edges)
+
+#' @:transitivity
+graph <- graph_from_data_frame(edges, vertices = data.frame(name = nodes$node), directed = TRUE)
+global_transitivity <- mean(transitivity(graph, type = "barrat"))
+
 
 
 ##------------------------------------------------------
 setwd(paste0(workpath, "/part1_disease"))
-openxlsx::write.xlsx(list("stat_all"=output_logist, "data"=data_disease.sub, "data_onsetAge"=meanAge_onset), "stat_DiseaeseNetwork_logistic_all.xlsx")
+openxlsx::write.xlsx(list("stat"=output, "stat_logist"=output_logist, "data"=disease_data), "sensi_stat_DiseaeseNetwork_BNs_all.xlsx") 
 
 
 
 
-#' @:Disease-network [Associations of each disease pair, noT2D]
-#' @:Logistic-reg [cross-sectional]
+#' @:Disease-Network [DAG, directed acyclic graphs; Causal Bayesian Network] 
+#' @:Non-T2D 
 ##------------------------------------------------------
-# data ---------------------------
+# data -----------------
+setwd(paste0(workpath, "/part6_MMI_sensi"))
+data_pheno <- openxlsx::read.xlsx("sensi_MMI_DailyTraits_linear_quartile.xlsx", sheet = "data")
+
 setwd(paste0(workpath, "/part1_disease"))
-data <- openxlsx::read.xlsx("stat_Daily_LADE_linear.xlsx", sheet = "data")
-data <- data[data$otc_T2D==0,]
-list_id <- unique(data$id)
-stat <- openxlsx::read.xlsx("stat_Daily_LADE_linear.xlsx", sheet = "stat_noT2D")
-list_disease <- unique(stat$exposure[stat$sig_q=="**" & !is.na(stat$sig_q)])
+disease_data <- openxlsx::read.xlsx("stat_DiseaeseNetwork_logistic_noT2D.xlsx", sheet = "data")
+disease_data <- merge(disease_data, data_pheno[,c("id","income3","education3","smoke_whe","MET","score_chei")], by="id", all = F) 
+head(disease_data)
+
+list_disease <- setdiff(colnames(disease_data)[grep("^otc_", colnames(disease_data))],"otc_T2D")
+disease_data[,list_disease] = lapply(disease_data[,list_disease], as.factor)
+list_disease_with_covariates = c(list_disease, "age", "sex")
 
 
-setwd(paste(root,"/1_data", sep = ""))
-data_disease <- openxlsx::read.xlsx("GNHS_disease_all.xlsx", sheet = "disease")   
-data_disease <- data_disease[data_disease$id %in% list_id, c("sampleid","id","time","age","sex","BMI",list_disease)]
-sum(is.na(data_disease))
+# stat (BNs) ------------------
+#' @:结构学习 [Structure Learning] 
+start_disease = "otc_Dyslipidemia"
+phenotypes = setdiff(list_disease, start_disease)
+whitelist = data.frame(
+  from = rep(start_disease, length(phenotypes)),
+  to = phenotypes
+) 
+
+outcome_disease = "otc_CKD"
+phenotypes = setdiff(list_disease, outcome_disease)
+blacklist = data.frame(
+  from = c(rep(outcome_disease, length(phenotypes)), phenotypes),
+  to = c(phenotypes, rep(start_disease, length(phenotypes)))
+) 
 
 
-#' @:onset_age
-data_onsetAge <- data.frame(id = list_id)
-for(d in list_disease){
-  submatr <- data_disease[,c("id","time","age",d)]
-  submatr <- submatr[order(submatr$time, decreasing = F),]
-  submatr <- submatr[order(submatr$id, decreasing = F),]
-  
-  submatr2 <- data.frame()
-  for(id in list_id){ 
-    onset_Age <- ifelse(sum(submatr[submatr$id==id,d])==0, NA, min(submatr[submatr$id==id & submatr[,d]==1,"age"]))
-    onset_Age <- data.frame(id=id, age=onset_Age)
-    submatr2 <- rbind(submatr2, onset_Age)
-  }
-  names(submatr2)[2] <- d
-  data_onsetAge <- merge(data_onsetAge, submatr2, by='id', all=F)
+#' @:运行自助法+禁忌搜索 [Bootstrapping + Tabu Search]
+print("--- 正在运行结构学习... ---")
+set.seed(666666)
+list_R <- seq(100,1000,50)
+
+result_arc_strength <- data.frame()
+for(R in list_R){
+  stat <- boot.strength(data = disease_data[, list_disease], R = R, algorithm = "tabu", algorithm.args = list(blacklist = blacklist, whitelist = whitelist))
+  result <- data.frame(R=R, mean_strength=mean(stat$strength), median_strength=median(stat$strength),
+                       mean_strength_sub=mean(stat$strength[stat$strength!=0]), median_strength_sub=median(stat$strength[stat$strength!=0]))
+  result_arc_strength <- rbind.fill(result_arc_strength, result)
 }
-meanAge_onset <- data.frame(meanAge=apply(data_onsetAge[,-1],2,mean, na.rm=T))
-meanAge_onset <- data.frame(disease=rownames(meanAge_onset),meanAge_onset)
 
-data_disease.sub <- data_disease[data_disease$id %in% list_id,]
-data_disease.sub <- data_disease.sub[order(data_disease.sub$time, decreasing = T),]
-data_disease.sub <- data_disease.sub[!duplicated(data_disease.sub$id),]; table(data_disease.sub$time)
+R_best <- result_arc_strength$R[which.max(result_arc_strength$mean_strength_sub)]
+arc_strength <- boot.strength(data = disease_data[, list_disease], R = 350, algorithm = "tabu", algorithm.args = list(blacklist = blacklist, whitelist = whitelist))
 
 
-# stat ------------------------
-input_data <- data_disease.sub 
+#' @:DAG-构建共识DAG [Consensus DAG & Evaluations]  
+consensus_dag = averaged.network(arc_strength, threshold = 0.2) 
+graphviz.plot(consensus_dag, layout = "dot", shape = "ellipse", main = "共识疾病网络" )
+
+
+#' @:参数学习 [Parameter Learning] 
+consensus_dag = cextend(consensus_dag)
+graphviz.plot(consensus_dag, layout = "dot", shape = "ellipse", main = "共识疾病网络" )
+fitted_network = bn.fit(consensus_dag, data = disease_data[, list_disease], method = "bayes") 
+
+
+#' @:因果推断 [Causal inference]
+set.seed(666666)
+all_arcs = arcs(consensus_dag)
+results_list = list()
+
+if (nrow(all_arcs) > 0) {
+  for (i in 1:nrow(all_arcs)) {
+    from_node = all_arcs[i, "from"]
+    to_node = all_arcs[i, "to"]
+    cat(paste("正在计算: ", from_node, "->", to_node, "...\n"))
+    
+    event_str = paste0("(", to_node, " == '1')")
+    evidence_str1 = paste0("(", from_node, " == '1')")
+    evidence_str0 = paste0("(", from_node, " == '0')")
+    
+    event_expr = parse(text = event_str)[[1]]
+    evidence_expr1 = parse(text = evidence_str1)[[1]]
+    evidence_expr0 = parse(text = evidence_str0)[[1]]
+    
+    prob_p1 = cpquery( fitted_network, event = eval(event_expr), evidence = eval(evidence_expr1), n = 9999 )
+    prob_p0 = cpquery( fitted_network, event = eval(event_expr), evidence = eval(evidence_expr0), n = 9999 )
+    
+    prob_p1 = min(max(prob_p1, 1e-6), 1 - 1e-6)
+    prob_p0 = min(max(prob_p0, 1e-6), 1 - 1e-6)
+    
+    odds1 = prob_p1 / (1 - prob_p1)
+    odds0 = prob_p0 / (1 - prob_p0)
+    OR = odds1 / odds0
+    
+    # 使用Wald检验计算OR的95%置信区间
+    log_OR = log(OR)
+    SE_log_OR = sqrt((1/(prob_p1 * (1 - prob_p1) * 999)) + (1/(prob_p0 * (1 - prob_p0) * 9999)))
+    
+    OR_lower = exp(log_OR - 1.96 * SE_log_OR)
+    OR_upper = exp(log_OR + 1.96 * SE_log_OR)
+    
+    z_score = log_OR / SE_log_OR
+    p_value = 2 * pnorm(-abs(z_score)) 
+    is_significant = ifelse(p_value < 0.05, "*", NA)
+    
+    # ================= 存储完整结果 =================
+    results_list[[i]] = data.frame(
+      Cause_From = from_node,
+      Effect_To = to_node,
+      OR = OR,
+      OR_lower_95 = OR_lower,
+      OR_upper_95 = OR_upper,
+      pval = p_value,
+      sig_p = is_significant,
+      P_Effect_given_Cause = prob_p1,
+      P_Effect_given_NO_Cause = prob_p0
+    )
+  }
+  
+  or_results = do.call(rbind, results_list)
+  print("--- 因果推断完成 ---") 
+  
+  sorted_results = or_results[order(-or_results$OR), ]  
+  
+} else {
+  print("您的 '共识DAG' 中没有 '弧' (可能是阈值 'threshold' 太高)，跳过OR计算。")
+}
+
+output <- data.frame(sorted_results)
+output$qval <- p.adjust(output$pval, method = "BH")
+output$sig_q <- ifelse(output$pval<0.05 & output$qval<0.05,"**",NA)
+
+
+# stat (logistic) ----------------
+list_covar <- c("age", "sex","BMI","income3","education3","smoke_whe","MET","score_chei")
 output_logist <- data.frame()
 
-for(d1 in list_disease){
-  list_disease2 <- setdiff(list_disease, d1)
-  
-  output <- data.frame()
-  for(d2 in list_disease2){
-    age1 <- meanAge_onset$meanAge[meanAge_onset$disease==d1]
-    age2 <- meanAge_onset$meanAge[meanAge_onset$disease==d2]
-    
-    exp <- ifelse(age1<age2, d1, d2)
-    otc <- setdiff(c(d1,d2), exp) 
-    stat <- glm(input_data[,otc] ~ input_data[,exp] + age + sex, data = input_data, family = "binomial")
-    result <- data.frame(t(summary(stat)$coefficient[2,]))
-    names(result) <- c("beta","se","z","pval")
-    
-    or <- exp(coef(stat))[2]
-    ci <- exp(confint(stat))[2,] 
-    
-    result <- data.frame(exposure=exp, outcome=otc, result, OR=or, CI_lower=ci[1], CI_upper=ci[2]) 
-    output <- rbind.fill(output, result)
+for(i in 1:nrow(all_arcs)){
+  exp <- all_arcs[i,1]
+  otc <- all_arcs[i,2] 
+  if(exp=="otc_ObesOverwe"|otc=="otc_ObesOverwe"){
+    covars <- setdiff(list_covar,"BMI")
+  }else{
+    covars <- list_covar
   }
-  output_logist <- rbind.fill(output_logist, output)
+  
+  a <- paste(otc, "~", exp)
+  b <- paste(covars, collapse = " + ")
+  stat <- glm(as.formula(paste(a,"+",b)), data = disease_data, family = "binomial")
+  result <- data.frame(t(summary(stat)$coefficient[2,]))
+  names(result) <- c("beta","se","z","pval")
+  result$sig_p <- ifelse(result$pval<0.05,"*",NA)
+  
+  or <- exp(coef(stat))[2]
+  ci <- exp(confint(stat))[2,] 
+  
+  result <- data.frame(exposure=exp, outcome=otc, result, OR=or, CI_lower=ci[1], CI_upper=ci[2]) 
+  output_logist <- rbind.fill(output_logist, result)
 }
-output_logist$tag <- paste(output_logist$exposure, output_logist$outcome, sep = "_")
-output_logist <- output_logist[!duplicated(output_logist$tag),]
-
 output_logist$qval <- p.adjust(output_logist$pval, method = "BH")
-output_logist$sig_q <- ifelse(output_logist$pval<0.05,"*",NA)
-output_logist$sig_q[output_logist$qval<0.05 & output_logist$pval<0.05] <- "**"
-table(output_logist$sig_q) 
+output_logist$sig_q <- ifelse(output_logist$qval<0.05,"**",NA)
+
+# Global_transitivity ------------------
+data <- output
+names(data)[1:2] <- c("exposure","outcome")
+head(data)
+
+#' @:nodes-file                             
+num_nodes1 <- data.frame(table(data$exposure[data$pval<0.05 & data$qval<0.05]))
+num_nodes2 <- data.frame(table(data$outcome[data$pval<0.05 & data$qval<0.05]))
+num_nodes <- rbind(num_nodes1, num_nodes2)
+input <- data[data$pval<0.05 & data$qval<0.05,]
+
+nodes <- data.frame(unique(c(unique(input$exposure), unique(input$outcome))))
+names(nodes) <- "node"  
+nodes <- merge(nodes, num_nodes, by.x = "node", by.y = "Var1", all.x=T)
+nodes <- aggregate(nodes$Freq, by=list(nodes$node), sum)
+names(nodes) <- c("node","Freq")
+
+nodes$seq <- seq(0,nrow(nodes)-1) 
+nodes$angle <- 90 - 360 * (nodes$seq+0.5) / nrow(nodes)
+nodes$angle <- ifelse(nodes$angle < (-90), nodes$angle+180, nodes$angle)
+nodes$hjust <- ifelse(nodes$seq < round(nrow(nodes)/2), 0, 1) 
+
+
+#' @:edges
+edges <- data.frame(from=input$exposure, to=input$outcome, corr=input$OR, qval=input$qval)
+edges$class <- ifelse(edges$corr>1, "Positive correlation", "Negative correlation")
+edges$class[edges$qval>0.05] <- "Insignificant"
+
+#' @:merge
+g <- tidygraph::tbl_graph(nodes=nodes, edges=edges)
+
+#' @:transitivity
+graph <- graph_from_data_frame(edges, vertices = data.frame(name = nodes$node), directed = TRUE)
+global_transitivity <- mean(transitivity(graph, type = "barrat"))
 
 
 ##------------------------------------------------------
 setwd(paste0(workpath, "/part1_disease"))
-openxlsx::write.xlsx(list("stat_all"=output_logist, "data"=data_disease.sub, "data_onsetAge"=meanAge_onset), "stat_DiseaeseNetwork_logistic_noT2D.xlsx")
+openxlsx::write.xlsx(list("stat"=output, "stat_logist"=output_logist, "data"=disease_data), "sensi_stat_DiseaeseNetwork_BNs_noT2D.xlsx") 
+
 
 
 
