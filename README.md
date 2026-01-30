@@ -1,35 +1,33 @@
 # Longitudinal multimorbidity trajectories shape personalized glycemic patterns
-This repository contains the R source code for a comprehensive bioinformatics study investigating the impact of aging on glycemic metabolism, the longitudinal accumulation of disease exposure (LADE), and the proteomic signatures associated with metabolic multimorbidity.
-
-The analysis utilizes Continuous Glucose Monitoring (CGM) data, clinical phenotypes, genomic polygenic scores (PGS), and proteomics from the Guangzhou Nutrition and Health Study (GNHS).
+This repository contains the R source code for a comprehensive bioinformatics study investigating the associations between aging-related multimorbidity trajectories and personalized glycemic patterns. The analysis utilizes Continuous Glucose Monitoring (CGM) derivied metrics, clinical phenotypes, personalized glycemic sensitivity index (PGS), and serum proteomics.
 
 ## Project Structure
-The analysis is organized into six major parts:
+The analysis is organized into 6 major parts:
 
-### Part 0: Aging-related multimorbidity trajectories linked to divergent glycemic patterns. 
-Correlation Analysis: Spearman correlations between age and various CGM traits (daily means, nighttime/daytime metrics, and meal-based responses).
+## Part 0: Aging-related multimorbidity trajectories linked to divergent glycemic patterns. 
+__Correlation Analysis__: Spearman correlations between age and various CGM traits (daily means, nighttime/daytime metrics, and meal-based responses).
 Slicing Window Analysis: Calculates the Coefficient of Variation (CV) of glycemic traits across age groups using a sliding window approach to evaluate metabolic stability during aging.
 Uniqueness Analysis: Euclidean distance-based "uniqueness" scores to quantify how individual metabolic profiles deviate from the population average and how this relates to aging and disease trajectories.
 
-### Part 1: Disease duration of morbidities and CGM-derivied daily glycemic traits.
+## Part 1: Disease duration of morbidities and CGM-derivied daily glycemic traits.
 Linear Modeling: Associating disease onset and duration with daily glycemic traits (e.g., eA1C, MAGE, CV).
 Disease Network: Construction of a disease association network using logistic regression to identify co-occurrence patterns of glucose-related diseases.
 Interaction Analysis: Investigating the longitudinal trajectories of multimorbidity (e.g., Glucose-Dyslipidemia interactions) using mixed-effect linear models.
 
-### Part 2: Systemic multimorbidity index and daily glycemic traits
+## Part 2: Systemic multimorbidity index and daily glycemic traits
 Stratified Comparison: Comparing glycemic variability across different levels of multimorbidity (Healthy, Single Disease, Mild Comorbidity, Severe Comorbidity).
 Dose-Response: Linear factor modeling to assess the "dose" effect of multiple chronic conditions on glycemic disruption.
 
-### Part 3: Systemic multimorbidity index and PGS, and Dietary responses
+## Part 3: Systemic multimorbidity index and PGS, and Dietary responses
 Genomic Associations: Evaluating the relationship between Polygenic Risk Scores (PGS) and multimorbidity.
 Meal Response Analysis: Wilcoxon tests and linear regression to observe how genetic risk influences postprandial glycemic responses (PPGR) to standardized meal tests (Refined vs. Whole Grain).
 
-### Part 4: Prediction Modeling
+## Part 4: Prediction Modeling
 Machine Learning: Random Forest models to predict CGM-measured daily traits and postprandial responses.
 Performance Evaluation: Comparison of "Base" models (standard clinical markers) versus "Combination" models (incorporating the Multimorbidity-Interaction system).
 Metrics: Evaluation via Spearman correlation
 .
-### Part 5: Systemic multimorbidity index and serum proteomics
+## Part 5: Systemic multimorbidity index and serum proteomics
 CRPs Identification: Mixed-linear models to identify Comorbidity-Related Proteins (CRPs) using longitudinal proteomic data.
 Network Topology: Analyzing protein-protein interaction networks across different health states (Healthy -> Severe) using topological features (density, transitivity, centrality).
 Functional Enrichment: GO (Gene Ontology) enrichment analysis for biological pathways associated with metabolic comorbidity.
@@ -39,12 +37,7 @@ Requirements
 
 ## R Packages
 The following R packages are required to run the scripts:
-
-Data Handling: openxlsx, reshape2, plyr, dplyr
-Statistics: lmerTest, mediation, vegan, psych, Hmisc
-Machine Learning: caret, randomForest, iml
-Network & Visualization: igraph, tidygraph, ggraph
-Bioinformatics: clusterProfiler, org.Hs.eg.db, topGO, pathview
+Hmisc v.5.2.2, randomForest v.4.7.1.2, lmerTest v.3.1.3, igraph v.2.1.2, clusterProfiler v.4.14.4, org.Hs.eg.db v.3.20.0, mediation v.4.5.0, ppcor v.1.1, ggplot2 v.3.5.1, ggpubr v0.6.0, compositions v.2.0.8, vegan v.2.6.8, bnlearn v.5.1. 
 
 ## Usage
 Define your root and workpath directories in the R environment.
