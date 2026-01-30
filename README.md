@@ -3,18 +3,19 @@ This repository contains the R source code for a comprehensive bioinformatics st
 
 
 
-
-
-## Project structure:
-### Part 0: Aging-related multimorbidity trajectories linked to divergent glycemic patterns. 
+## Part 0: Aging-related multimorbidity trajectories linked to divergent glycemic patterns. 
  __1) Correlation Analysis:__ Partial Spearman correlations between uniqueness of multimorbidity and uniqueness indices of various CGM traits (daily means, nighttime/daytime metrics, and meal-based responses). Euclidean distance-based "uniqueness" scores to quantify how individual metabolic profiles deviate from the population average and how this relates to aging and disease trajectories.
 
  __2) Slicing Window Analysis:__ Calculates the Coefficient of Variation (CV) of glycemic traits across age groups using a sliding window approach to evaluate glycemic stability during aging. 
 
+
 ## Part 1: Disease duration of morbidities and CGM-derivied daily glycemic traits.
-Linear Modeling: Associating disease onset and duration with daily glycemic traits (e.g., eA1C, MAGE, CV).
-Disease Network: Construction of a disease association network using logistic regression to identify co-occurrence patterns of glucose-related diseases.
-Interaction Analysis: Investigating the longitudinal trajectories of multimorbidity (e.g., Glucose-Dyslipidemia interactions) using mixed-effect linear models.
+__1) Linear Modeling:__ Associations of disease durations with daily glycemic traits (e.g., eA1C, MAGE, CV).
+
+__2) Disease Network:__ Construction of a disease association network using logistic regression to identify co-occurrence patterns of glucose-related diseases.
+
+__3) Interaction Analysis:__ Investigating the difference in longitudinal trajectories of multimorbidity stratified by baseline dyslipidemia status.
+
 
 ## Part 2: Systemic multimorbidity index and daily glycemic traits
 Stratified Comparison: Comparing glycemic variability across different levels of multimorbidity (Healthy, Single Disease, Mild Comorbidity, Severe Comorbidity).
