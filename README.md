@@ -35,9 +35,21 @@ This repository contains the R source code for a comprehensive bioinformatics st
 ## Data visualization
 Plots.R serves as the core visualization module, containing scripts for generating all primary figure panels using processed outputs derived from the analysis pipeline.
 
-## R packages
-The full list of required packages and functions is available in the 'function' folder. Core dependencies include:
-Hmisc v.5.2.2, randomForest v.4.7.1.2, lmerTest v.3.1.3, igraph v.2.1.2, clusterProfiler v.4.14.4, org.Hs.eg.db v.3.20.0, mediation v.4.5.0, ppcor v.1.1, ggplot2 v.3.5.1, ggpubr v.0.6.0, compositions v.2.0.8, vegan v.2.6.8, bnlearn v.5.1.
+## Environment & Dependencies
+
+### R Packages
+The following core packages are required (full list available in the `/functions` folder):
+*   **Statistics:** `lmerTest (v3.1.3)`, `ppcor (v1.1)`, `vegan (v2.6.8)`, `bnlearn (v5.1)`, `mediation (v4.5.0)`
+*   **Machine Learning:** `randomForest (v4.7.1.2)`, `iml`
+*   **Bioinformatics:** `clusterProfiler (v4.14.4)`, `org.Hs.eg.db (v3.20.0)`
+*   **Visualization:** `ggplot2 (v3.5.1)`, `ggpubr (v0.6.0)`, `igraph (v2.1.2)`
+*   **Data Handling:** `Hmisc (v5.2.2)`, `compositions (v2.0.8)`
 
 ## Usage
-Define your root and workpath directories in the R environment. Run the scripts sequentially from Part 0 to Part 5 to maintain data dependencies. Results will be saved in subfolders corresponding to each part (e.g., /part1_aging, /part5_proteomics).
+1.  **Set Directories:** Define your `root` and `workpath` in the R environment.
+2.  **Sequential Execution:** Run scripts from `Part 0` to `Part 5` sequentially to maintain data dependencies.
+3.  **Outputs:** Statistical results and processed data are automatically saved in subfolders (e.g., `./part1_aging/`, `./part5_proteomics/`).
+
+## Contact
+[Ke Zhang / Lab of Precision nutrition and computational medicine]  
+[zhangke@westlake.edu.cn]
