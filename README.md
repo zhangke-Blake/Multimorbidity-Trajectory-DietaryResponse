@@ -50,7 +50,8 @@ Plots.R serves as the core visualization module, containing scripts for generati
 
 
 ## R Packages
-The following R packages are required to run the scripts:
+The following R packages are required to run the core analysis, and the full list of required packages and functions are available in the 'function' folder:
+
 Hmisc v.5.2.2, randomForest v.4.7.1.2, lmerTest v.3.1.3, igraph v.2.1.2, clusterProfiler v.4.14.4, org.Hs.eg.db v.3.20.0, mediation v.4.5.0, ppcor v.1.1, ggplot2 v.3.5.1, ggpubr v0.6.0, compositions v.2.0.8, vegan v.2.6.8, bnlearn v.5.1. 
 
 
